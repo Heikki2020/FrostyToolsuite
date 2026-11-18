@@ -11,27 +11,51 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@v3
 
       # Building the plugin project also builds its project references
-      # (FrostyControls, FrostyCore, FrostySdk, MeshSetPlugin).
+      # (FrostyControls, FrostyCore, FrostySdk, MeshSetPlugin and the native
+      # FrostyHash C++/CLI project they all depend on).
+      #
+      # FrostyHash.vcxproj asks for Windows SDK 10.0.18362.0 and toolset v143,
+      # which the runner may not have, so we retarget on the command line
+      # instead of editing the project file:
+      #   - WindowsTargetPlatformVersion=10.0 means "latest installed SDK".
+      #   - If v143 is not installed, use the newest installed C++ toolset.
+      #
       # SolutionDir is passed by hand because the plugin's post-build xcopy
       # step uses it and we are not building through the .sln.
       - name: Restore and build
         shell: pwsh
         run: |
           $solutionDir = (Join-Path $PWD 'FrostyEditor') + '\'
-          msbuild Plugins/BundleEditorPlugin/BundleEditorPlugin.csproj `
-            -restore `
-            '-p:Configuration=Release - Final' `
-            '-p:Platform=x64' `
-            "-p:SolutionDir=$solutionDir" `
-            -verbosity:minimal
+
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $toolsets = @(Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets" -Directory -ErrorAction SilentlyContinue | ForEach-Object Name)
+          Write-Host "Installed C++ toolsets: $($toolsets -join ', ')"
+
+          $msbuildArgs = @(
+            'Plugins/BundleEditorPlugin/BundleEditorPlugin.csproj',
+            '-restore',
+            '-p:Configuration=Release - Final',
+            '-p:Platform=x64',
+            "-p:SolutionDir=$solutionDir",
+            '-p:WindowsTargetPlatformVersion=10.0',
+            '-verbosity:minimal'
+          )
+
+          if ($toolsets.Count -gt 0 -and $toolsets -notcontains 'v143') {
+            $latest = $toolsets | Sort-Object -Descending | Select-Object -First 1
+            Write-Host "v143 not found, using $latest"
+            $msbuildArgs += "-p:PlatformToolset=$latest"
+          }
+
+          msbuild @msbuildArgs
 
       - name: Upload plugin DLL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BundleEditorPlugin
           path: Plugins/BundleEditorPlugin/bin/Release/Final/BundleEditorPlugin.dll

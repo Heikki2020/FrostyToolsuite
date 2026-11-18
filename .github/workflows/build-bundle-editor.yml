@@ -33,7 +33,7 @@ jobs:
           $solutionDir = (Join-Path $PWD 'FrostyEditor') + '\'
 
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          $toolsets = @(Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets" -Directory -ErrorAction SilentlyContinue | ForEach-Object Name)
+          $toolsets = @(Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets\*" -Directory -ErrorAction SilentlyContinue | ForEach-Object Name | Where-Object { $_ -match '^v\d+$' } | Sort-Object -Unique)
           Write-Host "Installed C++ toolsets: $($toolsets -join ', ')"
 
           $msbuildArgs = @(

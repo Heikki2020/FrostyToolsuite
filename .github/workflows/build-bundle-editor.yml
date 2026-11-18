@@ -1,0 +1,38 @@
+name: Build Bundle Editor plugin
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Plugins/BundleEditorPlugin/**'
+      - '.github/workflows/build-bundle-editor.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      # Building the plugin project also builds its project references
+      # (FrostyControls, FrostyCore, FrostySdk, MeshSetPlugin).
+      # SolutionDir is passed by hand because the plugin's post-build xcopy
+      # step uses it and we are not building through the .sln.
+      - name: Restore and build
+        shell: pwsh
+        run: |
+          $solutionDir = (Join-Path $PWD 'FrostyEditor') + '\'
+          msbuild Plugins/BundleEditorPlugin/BundleEditorPlugin.csproj `
+            -restore `
+            '-p:Configuration=Release - Final' `
+            '-p:Platform=x64' `
+            "-p:SolutionDir=$solutionDir" `
+            -verbosity:minimal
+
+      - name: Upload plugin DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: BundleEditorPlugin
+          path: Plugins/BundleEditorPlugin/bin/Release/Final/BundleEditorPlugin.dll
+          if-no-files-found: error
